@@ -1,7 +1,3 @@
-[build]
-command = "npm run build"
-publish = "dist"
-
 [functions]
 directory = "netlify/functions"
 node_bundler = "esbuild"
@@ -9,4 +5,3 @@ external_node_modules = ["openai", "youtube-transcript-api"]
 
 [functions.summarize]
 timeout = 26
-
