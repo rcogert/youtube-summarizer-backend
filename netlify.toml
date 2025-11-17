@@ -4,7 +4,8 @@
 
 [functions]
   directory = "dist/functions"
-  node_bundler = "esbuild"
+  node_bundler = "none"
 
 [functions.summarize]
   timeout = 26
+  node_bundler = "none"
