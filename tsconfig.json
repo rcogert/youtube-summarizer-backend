@@ -1,12 +1,17 @@
 {
   "compilerOptions": {
-    "target": "ES2020",
-    "module": "NodeNext",
+    "target": "ESNext",
+    "module": "ESNext",
     "moduleResolution": "NodeNext",
-    "outDir": "dist",
-    "rootDir": ".",
     "esModuleInterop": true,
-    "strict": false
+    "skipLibCheck": true,
+    "outDir": "dist"
   },
-  "include": ["netlify/functions/*.ts"]
+  "include": [
+    "netlify/functions/**/*.cts",
+    "netlify/functions/**/*.ts"
+  ],
+  "exclude": [
+    "dist"
+  ]
 }
