@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html>
+<body>
+<h2>Testing summarize function… check console.</h2>
+
+<script>
+fetch("https://brilliant-moonbeam-e70394.netlify.app/.netlify/functions/summarize", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ videoId: "j9V78UbdzWI" })
+})
+  .then(async r => {
+    console.log("STATUS:", r.status);
+    console.log("RAW:", await r.text());
+  })
+  .catch(e => console.error("ERROR:", e));
+</script>
+
+</body>
+</html>

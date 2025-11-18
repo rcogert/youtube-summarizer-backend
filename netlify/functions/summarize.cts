@@ -1,91 +1,83 @@
-import { OpenAI } from "openai";
-import fetch from "node-fetch";
+import { DOMParser } from "xmldom";
+import OpenAI from "openai";
 
-const cors = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "Content-Type",
-  "Access-Control-Allow-Methods": "OPTIONS, POST"
-};
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-async function fetchTranscript(videoId: string) {
-  const urls = [
-    `https://www.youtube.com/api/timedtext?lang=en&v=${videoId}`,
-    `https://www.youtube.com/api/timedtext?lang=en&v=${videoId}&kind=asr`
-  ];
-
-  for (const url of urls) {
-    const response = await fetch(url);
-    const xml = await response.text();
-
-    if (!xml.includes("<text")) continue;
-
-    const parts = [...xml.matchAll(/<text start="(.*?)" dur=".*?">(.*?)<\/text>/g)]
-      .map((m) => {
-        const start = parseFloat(m[1]);
-        const decoded = decodeURIComponent(m[2].replace(/&amp;/g, "&"));
-        return `[${Math.floor(start)}] ${decoded}`;
-      });
-
-    if (parts.length > 0) return parts.join(" ");
-  }
-  return null;
-}
-
-export const handler = async (event: any) => {
+export const handler = async (event) => {
+  // ---- CORS: Handle Preflight Requests ----
   if (event.httpMethod === "OPTIONS") {
-    return { statusCode: 200, headers: cors, body: "" };
+    return {
+      statusCode: 200,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Headers": "Content-Type",
+        "Access-Control-Allow-Methods": "POST, OPTIONS"
+      },
+      body: ""
+    };
   }
 
-  if (event.httpMethod !== "POST") {
-    return { statusCode: 405, headers: cors, body: "Method Not Allowed" };
-  }
+  // ---- CORS headers for all real POST requests ----
+  const corsHeaders = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Headers": "Content-Type",
+  };
 
   try {
     const { videoId } = JSON.parse(event.body || "{}");
-
     if (!videoId) {
       return {
         statusCode: 400,
-        headers: cors,
-        body: JSON.stringify({ error: "Missing videoId" })
+        headers: corsHeaders,
+        body: JSON.stringify({ error: "Missing videoId" }),
       };
     }
 
-    const transcript = await fetchTranscript(videoId);
+    // --- Try captions API ---
+    const captionsRes = await fetch(
+      `https://www.youtube.com/api/timedtext?lang=en&v=${videoId}`
+    );
 
-    if (!transcript) {
+    const xml = await captionsRes.text();
+    const dom = new DOMParser().parseFromString(xml, "text/xml");
+    const texts = dom.getElementsByTagName("text");
+
+    let transcript = "";
+    for (let i = 0; i < texts.length; i++) {
+      transcript += texts[i].textContent + " ";
+    }
+
+    if (!transcript.trim()) {
       return {
         statusCode: 200,
-        headers: cors,
+        headers: corsHeaders,
         body: JSON.stringify({
-          summary: "This video does not have a transcript available."
-        })
+          summary: "This video does not have a transcript available.",
+        }),
       };
     }
 
-    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
-    const result = await openai.chat.completions.create({
-      model: "gpt-4.1-mini",
+    // ---- Use OpenAI to summarize ----
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
       messages: [
         {
-          role: "system",
-          content: "Summarize this transcript with bullet points and timestamps."
+          role: "user",
+          content: `Provide a concise summary of this YouTube transcript:\n\n${transcript}`,
         },
-        { role: "user", content: transcript }
-      ]
+      ],
     });
 
     return {
       statusCode: 200,
-      headers: cors,
-      body: JSON.stringify({ summary: result.choices[0].message.content })
+      headers: corsHeaders,
+      body: JSON.stringify({ summary: completion.choices[0].message.content }),
     };
-  } catch (err: any) {
+  } catch (err) {
     return {
       statusCode: 500,
-      headers: cors,
-      body: JSON.stringify({ error: err.message })
+      headers: corsHeaders,
+      body: JSON.stringify({ error: err.message }),
     };
   }
 };
