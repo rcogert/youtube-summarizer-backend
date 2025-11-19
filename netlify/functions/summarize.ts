@@ -3,37 +3,35 @@ import OpenAI from "openai";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "Content-Type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+
 export const handler = async (event) => {
-  // ---- CORS: Handle Preflight Requests ----
   if (event.httpMethod === "OPTIONS") {
-    return {
-      statusCode: 200,
-      headers: {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Headers": "Content-Type",
-        "Access-Control-Allow-Methods": "POST, OPTIONS"
-      },
-      body: ""
-    };
+    return { statusCode: 200, headers: corsHeaders, body: "" };
   }
 
-  // ---- CORS headers for all real POST requests ----
-  const corsHeaders = {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "Content-Type",
-  };
-
   try {
-    const { videoId } = JSON.parse(event.body || "{}");
+    const body = JSON.parse(event.body || "{}");
+
+    let videoId = body.videoId;
+
+    if (!videoId && body.videoUrl) {
+      const match = body.videoUrl.match(/[?&]v=([^&]+)/);
+      if (match) videoId = match[1];
+    }
+
     if (!videoId) {
       return {
         statusCode: 400,
         headers: corsHeaders,
-        body: JSON.stringify({ error: "Missing videoId" }),
+        body: JSON.stringify({ error: "Missing videoId or videoUrl" }),
       };
     }
 
-    // --- Try captions API ---
     const captionsRes = await fetch(
       `https://www.youtube.com/api/timedtext?lang=en&v=${videoId}`
     );
@@ -57,13 +55,12 @@ export const handler = async (event) => {
       };
     }
 
-    // ---- Use OpenAI to summarize ----
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
         {
           role: "user",
-          content: `Provide a concise summary of this YouTube transcript:\n\n${transcript}`,
+          content: `Summarize this YouTube transcript:\n\n${transcript}`,
         },
       ],
     });

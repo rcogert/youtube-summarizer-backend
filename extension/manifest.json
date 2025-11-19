@@ -1,20 +1,24 @@
 {
   "manifest_version": 3,
-  "name": "YouTube Creator Summarizer",
-  "version": "0.1.0",
-  "description": "Summarize YouTube videos into creator-friendly notes with timestamps.",
-  "permissions": [
-    "tabs"
-  ],
-"host_permissions": [
-  "*://*.youtube.com/*",
-  "https://brilliant-moonbeam-e70394.netlify.app/*"
-],
-  "background": {
-    "service_worker": "background.js"
-  },
+  "name": "YouTube TLDR Summarizer",
+  "version": "1.0.0",
+  "description": "Adds a TLDR button to YouTube videos to show AI-generated summaries.",
   "action": {
-    "default_title": "Summarize this video",
-    "default_popup": "popup.html"
-  }
+    "default_title": "YouTube TLDR Summarizer"
+  },
+  "host_permissions": [
+    "https://brilliant-moonbeam-e70394.netlify.app/*",
+    "https://www.youtube.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.youtube.com/*"
+      ],
+      "js": [
+        "contentScript.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
 }
