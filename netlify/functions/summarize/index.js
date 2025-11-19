@@ -6,16 +6,15 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "Content-Type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS"
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-export const handler = async (event: any) => {
-  // OPTIONS preflight
+export const handler = async (event) => {
   if (event.httpMethod === "OPTIONS") {
     return {
       statusCode: 200,
       headers: corsHeaders,
-      body: ""
+      body: "",
     };
   }
 
@@ -24,7 +23,6 @@ export const handler = async (event: any) => {
 
     let videoId = body.videoId;
 
-    // Extract ID from videoUrl if needed
     if (!videoId && body.videoUrl) {
       const match = body.videoUrl.match(/[?&]v=([^&]+)/);
       if (match) videoId = match[1];
@@ -34,11 +32,10 @@ export const handler = async (event: any) => {
       return {
         statusCode: 400,
         headers: corsHeaders,
-        body: JSON.stringify({ error: "Missing videoId or videoUrl" })
+        body: JSON.stringify({ error: "Missing videoId or videoUrl" }),
       };
     }
 
-    // Fetch captions
     const captionsRes = await fetch(
       `https://www.youtube.com/api/timedtext?lang=en&v=${videoId}`
     );
@@ -57,32 +54,33 @@ export const handler = async (event: any) => {
         statusCode: 200,
         headers: corsHeaders,
         body: JSON.stringify({
-          summary: "This video does not have a transcript available."
-        })
+          summary: "This video does not have a transcript available.",
+        }),
       };
     }
 
-    // Summarize with OpenAI
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
-        { role: "user", content: `Summarize this transcript:\n\n${transcript}` }
-      ]
+        {
+          role: "user",
+          content: `Summarize this transcript:\n\n${transcript}`,
+        },
+      ],
     });
 
     return {
       statusCode: 200,
       headers: corsHeaders,
       body: JSON.stringify({
-        summary: completion.choices[0].message.content
-      })
+        summary: completion.choices[0].message.content,
+      }),
     };
-
-  } catch (err: any) {
+  } catch (err) {
     return {
       statusCode: 500,
       headers: corsHeaders,
-      body: JSON.stringify({ error: err.message })
+      body: JSON.stringify({ error: err.message }),
     };
   }
 };

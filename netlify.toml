@@ -1,9 +1,9 @@
 [build]
-command = "npm run build"
-publish = "dist"
+command = ""
+publish = "."
 
 [functions]
-directory = "dist/netlify/functions"
+directory = "netlify/functions"
 node_bundler = "esbuild"
 external_node_modules = ["openai", "youtube-transcript-api"]
 
