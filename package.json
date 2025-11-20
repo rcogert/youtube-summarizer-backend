@@ -7,6 +7,7 @@
     "postbuild": "node copy-func-package.cjs"
   },
   "dependencies": {
+    "jsdom": "^27.2.0",
     "node-fetch": "^3.3.2",
     "openai": "^4.0.0",
     "xmldom": "^0.6.0",
