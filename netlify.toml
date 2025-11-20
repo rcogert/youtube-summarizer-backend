@@ -10,12 +10,15 @@ external_node_modules = ["openai", "youtube-transcript-api"]
 [functions.summarize]
 timeout = 26
 
-# --- START CORS FIX (Add this block) ---
+# --- CRITICAL CORS FIX: Ensures the browser allows the Content-Type header ---
 [[headers]]
   for = "/.netlify/functions/summarize"
   [headers.values]
+    # Allow requests from all origins (YouTube)
     Access-Control-Allow-Origin = "*"
+    
+    # Explicitly allow the Content-Type header sent by your fetch request
     Access-Control-Allow-Headers = "Content-Type"
+    
+    # Allow only POST and OPTIONS methods
     Access-Control-Allow-Methods = "POST, OPTIONS"
-    # This ensures a 200 status for OPTIONS requests, bypassing the function code for preflights
-# --- END CORS FIX ---
