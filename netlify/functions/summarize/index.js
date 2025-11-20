@@ -6,11 +6,12 @@ const { getTranscript } = require('youtube-transcript-api');
 const { JSDOM } = require('jsdom'); // This is needed because 'youtube-transcript-api' might require it
 
 // --- IMPORTANT: SET YOUR SECRETS HERE ---
-// It is strongly recommended to use Netlify Environment Variables instead of hardcoding.
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "YOUR_OPENAI_API_KEY_HERE";
+// Get the API key securely from Netlify Environment Variables.
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY; 
 
-// Initialize OpenAI client
-const openai = new OpenAI({ apiKey: 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 });
+// Initialize OpenAI client 🛑 (This line was missing)
+// If the key is not set in Netlify, the function will throw a 500 error here.
+const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
 
 // Define all necessary CORS headers once
 const HEADERS = {
@@ -29,6 +30,16 @@ exports.handler = async (event) => {
     if (event.httpMethod !== "POST") {
         return { statusCode: 405, headers: HEADERS, body: JSON.stringify({ error: "Method Not Allowed. Use POST." }) };
     }
+    
+    // Check if the OpenAI client initialized correctly (i.e., if key is present)
+    if (!OPENAI_API_KEY) {
+         return {
+            statusCode: 500,
+            headers: HEADERS,
+            body: JSON.stringify({ error: "Server configuration error: OpenAI API Key is missing." }),
+        };
+    }
+
 
     let videoUrl;
     let videoId;
@@ -41,9 +52,9 @@ exports.handler = async (event) => {
             throw new Error("Missing videoUrl in request body.");
         }
         
-        // 🛑 FIX: Use the standard URL class for robust parsing
+        // Use the standard URL class for robust parsing
         const parsedUrl = new URL(videoUrl);
-        videoId = parsedUrl.searchParams.get('v'); // Get 'v' query parameter
+        videoId = parsedUrl.searchParams.get('v'); 
 
         if (!videoId) {
             throw new Error("Could not extract video ID from URL.");
@@ -51,7 +62,7 @@ exports.handler = async (event) => {
     } catch (e) {
         console.error("Error parsing request body or URL:", e.message);
         return {
-            statusCode: 400, // Still return 400 for bad client data
+            statusCode: 400, 
             headers: HEADERS,
             body: JSON.stringify({ error: `Invalid request or URL data: ${e.message}` }),
         };
@@ -72,7 +83,7 @@ exports.handler = async (event) => {
     } catch (e) {
         console.error("Transcript Error:", e.message);
         return {
-            statusCode: 404, // 404 is appropriate if transcript cannot be found
+            statusCode: 404, 
             headers: HEADERS,
             body: JSON.stringify({ error: "Could not retrieve transcript.", details: e.message }),
         };
@@ -103,7 +114,7 @@ exports.handler = async (event) => {
     } catch (e) {
         console.error("OpenAI Error:", e.message);
         return {
-            statusCode: 500, // 500 for server-side API failures
+            statusCode: 500, 
             headers: HEADERS,
             body: JSON.stringify({ error: "OpenAI summarization failed.", details: e.message }),
         };
