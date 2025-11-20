@@ -9,3 +9,13 @@ external_node_modules = ["openai", "youtube-transcript-api"]
 
 [functions.summarize]
 timeout = 26
+
+# --- START CORS FIX (Add this block) ---
+[[headers]]
+  for = "/.netlify/functions/summarize"
+  [headers.values]
+    Access-Control-Allow-Origin = "*"
+    Access-Control-Allow-Headers = "Content-Type"
+    Access-Control-Allow-Methods = "POST, OPTIONS"
+    # This ensures a 200 status for OPTIONS requests, bypassing the function code for preflights
+# --- END CORS FIX ---
