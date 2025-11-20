@@ -1,86 +1,130 @@
-import { DOMParser } from "xmldom";
-import OpenAI from "openai";
+// index.js (for netlify/functions/summarize)
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+// --- REQUIRED IMPORTS ---
+// NOTE: Make sure these are listed in your netlify.toml under 'external_node_modules'
+const { Configuration, OpenAI } = require("openai");
+const { getTranscript } = require('youtube-transcript-api'); 
+const { JSDOM } = require('jsdom'); // Used for parsing the XML transcript
+const url = require('url'); // Node's built-in URL parser
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "Content-Type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
+// --- IMPORTANT: SET YOUR SECRETS HERE ---
+// It is strongly recommended to use Netlify Environment Variables instead of hardcoding.
+// If you MUST hardcode for testing, replace 'YOUR_OPENAI_API_KEY_HERE'.
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "YOUR_OPENAI_API_KEY_HERE";
+
+// Initialize OpenAI client
+const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
+
+// Define all necessary CORS headers once
+const HEADERS = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization", // Added Authorization for better security practice
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Content-Type": "application/json",
 };
 
-export const handler = async (event) => {
-  if (event.httpMethod === "OPTIONS") {
-    return {
-      statusCode: 200,
-      headers: corsHeaders,
-      body: "",
-    };
-  }
-
-  try {
-    const body = JSON.parse(event.body || "{}");
-
-    let videoId = body.videoId;
-
-    if (!videoId && body.videoUrl) {
-      const match = body.videoUrl.match(/[?&]v=([^&]+)/);
-      if (match) videoId = match[1];
+exports.handler = async (event) => {
+    // 1. 🛑 FIX: Handle Preflight OPTIONS request (CORS check)
+    if (event.httpMethod === "OPTIONS") {
+        return {
+            statusCode: 200, // Must return 200 OK status
+            headers: HEADERS,
+            body: JSON.stringify({ message: "CORS preflight successful" }),
+        };
     }
 
-    if (!videoId) {
-      return {
-        statusCode: 400,
-        headers: corsHeaders,
-        body: JSON.stringify({ error: "Missing videoId or videoUrl" }),
-      };
+    // Ensure it's a POST request for actual summarization
+    if (event.httpMethod !== "POST") {
+        return {
+            statusCode: 405,
+            headers: HEADERS,
+            body: JSON.stringify({ error: "Method Not Allowed. Use POST." }),
+        };
     }
 
-    const captionsRes = await fetch(
-      `https://www.youtube.com/api/timedtext?lang=en&v=${videoId}`
-    );
-    const xml = await captionsRes.text();
+    let videoUrl;
+    let videoId;
+    
+    try {
+        const body = JSON.parse(event.body);
+        videoUrl = body.videoUrl;
+        
+        // 2. Extract Video ID from the URL
+        if (!videoUrl) {
+            throw new Error("Missing videoUrl in request body.");
+        }
+        
+        const url_parts = url.parse(videoUrl, true);
+        videoId = url_parts.query.v;
 
-    const dom = new DOMParser().parseFromString(xml, "text/xml");
-    const texts = dom.getElementsByTagName("text");
-
-    let transcript = "";
-    for (let i = 0; i < texts.length; i++) {
-      transcript += texts[i].textContent + " ";
+        if (!videoId) {
+            throw new Error("Could not extract video ID from URL.");
+        }
+    } catch (e) {
+        console.error("Error parsing request body or URL:", e.message);
+        return {
+            statusCode: 400,
+            headers: HEADERS,
+            body: JSON.stringify({ error: `Invalid request format: ${e.message}` }),
+        };
     }
 
-    if (!transcript.trim()) {
-      return {
-        statusCode: 200,
-        headers: corsHeaders,
-        body: JSON.stringify({
-          summary: "This video does not have a transcript available.",
-        }),
-      };
+    let transcriptText = "";
+    
+    try {
+        // 3. Fetch Transcript XML and Parse it
+        // The getTranscript function handles fetching the XML from the timedtext API
+        // and parsing it. We'll use the result to build a simple text string.
+        const transcriptSegments = await getTranscript(videoId, { lang: 'en' });
+        
+        if (transcriptSegments.length === 0) {
+            // 💡 REFINEMENT: Graceful handling for videos without captions
+             throw new Error("Video has no available English transcript to summarize.");
+        }
+
+        // Concatenate text from segments to form the full transcript
+        transcriptText = transcriptSegments.map(segment => segment.text).join(' ');
+        
+    } catch (e) {
+        console.error("Transcript Error:", e.message);
+        return {
+            statusCode: 404,
+            headers: HEADERS,
+            body: JSON.stringify({ 
+                error: "Could not retrieve transcript.", 
+                details: e.message 
+            }),
+        };
     }
+    
+    // 4. Call OpenAI to Summarize
+    try {
+        const prompt = `Summarize the following YouTube video transcript concisely and clearly in two short paragraphs. Transcript: \n\n${transcriptText}`;
 
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
-        {
-          role: "user",
-          content: `Summarize this transcript:\n\n${transcript}`,
-        },
-      ],
-    });
+        const completion = await openai.chat.completions.create({
+            model: "gpt-4o-mini",
+            messages: [
+                { role: "system", content: "You are a professional summarization AI." },
+                { role: "user", content: prompt }
+            ],
+            temperature: 0.1,
+        });
 
-    return {
-      statusCode: 200,
-      headers: corsHeaders,
-      body: JSON.stringify({
-        summary: completion.choices[0].message.content,
-      }),
-    };
-  } catch (err) {
-    return {
-      statusCode: 500,
-      headers: corsHeaders,
-      body: JSON.stringify({ error: err.message }),
-    };
-  }
+        const summary = completion.choices[0].message.content;
+
+        // 5. Return Summary to Client
+        return {
+            statusCode: 200,
+            headers: HEADERS,
+            body: JSON.stringify({ summary: summary }),
+        };
+
+    } catch (e) {
+        console.error("OpenAI Error:", e.message);
+        return {
+            statusCode: 500,
+            headers: HEADERS,
+            body: JSON.stringify({ error: "OpenAI summarization failed.", details: e.message }),
+        };
+    }
 };
