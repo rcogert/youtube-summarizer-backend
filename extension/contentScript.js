@@ -1,11 +1,12 @@
 // ==========================================================
 // YOUTUBE TLDR SUMMARIZER - CONTENT SCRIPT
-// V14: Targeted Fix and Debugging (400 Error)
+// V15: Final URL Structure Fix (Proxy Route)
 // ==========================================================
 
-const API_URL = "https://brilliant-moonbeam-e70394.netlify.app/.netlify/functions/summarize";
+// *** CRITICAL CHANGE HERE: Using the clean proxy path ***
+const API_URL = "https://brilliant-moonbeam-e70394.netlify.app/api/summarize"; 
 const BUTTON_CLASS = "tldr-summarizer-button";
-const VIDEO_LINK_SELECTOR = 'a[href*="/watch?v="]';
+const VIDEO_LINK_SELECTOR = 'a[href*="/watch?v="]'; 
 
 // --- UI AND DISPLAY ---
 
@@ -69,10 +70,9 @@ function injectButton(container, videoId, isMainPlayer = false) {
 }
 
 // ------------------------------------------------------
-// 2. NETWORK COMMUNICATION (DEBUGGING 400)
+// 2. NETWORK COMMUNICATION (FINAL URL FIX)
 // ------------------------------------------------------
 function sendForSummary(url) {
-  // *** DEBUG LINE ADDED HERE ***
   console.log("URL being sent to Netlify:", url); 
 
   fetch(API_URL, {
@@ -82,6 +82,7 @@ function sendForSummary(url) {
     .then((res) => {
         if (!res.ok) {
             console.error("API Fetch Failed with Status:", res.status, res.statusText);
+            // We now expect to see logs in Netlify if this fails!
             throw new Error(`HTTP error! Status: ${res.status}`);
         }
         return res.json();
@@ -105,11 +106,11 @@ function sendForSummary(url) {
 
 
 // ------------------------------------------------------
-// 3. INJECTION LOGIC
+// 3. INJECTION LOGIC (INTERVAL SCAN)
 // ------------------------------------------------------
 
 function processVideoElements() {
-    // A. Handle Main Video Player (Re-enabling with robust wrapper)
+    // A. Handle Main Video Player
     const mainPlayer = document.querySelector('#movie_player');
     const mainPlayerWrapper = mainPlayer ? mainPlayer.closest('ytd-watch-flexy') : null; 
 
@@ -124,19 +125,27 @@ function processVideoElements() {
     const videoLinks = document.querySelectorAll(VIDEO_LINK_SELECTOR);
     
     videoLinks.forEach(link => {
-        // Find the closest component wrapper
-        const container = link.closest('ytd-rich-grid-media') || link.closest('ytd-compact-video-renderer'); 
+        const homePageContainer = link.closest('ytd-rich-grid-media') || link.closest('ytd-rich-item-renderer');
+        const sidebarContainer = link.closest('ytd-compact-video-renderer'); 
         
-        const finalContainer = container || link.parentElement; 
+        let finalContainer = null;
+        let videoId = null;
+        
+        if (sidebarContainer) {
+             const thumbWrapper = sidebarContainer.querySelector('#thumbnail');
+             if (thumbWrapper && !thumbWrapper.querySelector(`.${BUTTON_CLASS}`)) {
+                finalContainer = thumbWrapper;
+                videoId = new URLSearchParams(link.search).get('v');
+             }
+        }
+        
+        if (homePageContainer) {
+            finalContainer = homePageContainer;
+            videoId = new URLSearchParams(link.search).get('v');
+        }
 
-        if (finalContainer) {
-            const urlParams = new URLSearchParams(link.search);
-            const videoId = urlParams.get('v');
-            if (videoId) {
-                // Ensure we use the full URL path, not just the ID, for reliable backend parsing
-                const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
-                injectButton(finalContainer, videoId, false);
-            }
+        if (finalContainer && videoId) {
+            injectButton(finalContainer, videoId, false);
         }
     });
 }
