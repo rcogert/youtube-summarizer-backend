@@ -5,17 +5,18 @@ publish = "."
 [functions]
 directory = "netlify/functions"
 node_bundler = "esbuild"
-external_node_modules = ["openai", "youtube-transcript-api"]
+# CRITICAL FIX: Adding native Node modules needed by the transcript library
+external_node_modules = ["openai", "youtube-transcript-api", "http", "https"] 
 
 [functions.summarize]
 timeout = 26
 
-# 🛑 CRITICAL FIX: Proxy redirect and CORS headers for the new path
+# Proxy redirect
 [[redirects]]
   from = "/api/summarize"
   to = "/.netlify/functions/summarize"
   status = 200 
-  force = true # Forces the browser to use this clean path
+  force = true 
 
 # Inject CORS headers directly onto the new /api/summarize path
 [[headers]]
