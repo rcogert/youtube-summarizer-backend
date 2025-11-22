@@ -2,6 +2,7 @@
 command = ""
 publish = "."
 
+# We define the function directory globally
 [functions]
 directory = "netlify/functions"
 node_bundler = "esbuild"
@@ -9,4 +10,10 @@ external_node_modules = ["openai", "youtube-transcript-api"]
 
 [functions.summarize]
 timeout = 26
-# Removed the custom [[headers]] block to prevent routing conflicts.
+
+# 🛑 CRITICAL FIX: Explicitly route the function path to the functions engine.
+# This forces Netlify to bypass any static file or asset routing that might cause the 400.
+[[redirects]]
+  from = "/.netlify/functions/*"
+  to = "/.netlify/functions/:splat"
+  status = 200
