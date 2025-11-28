@@ -1,8 +1,8 @@
 // index.js (for netlify/functions/summarize)
 
-// --- REQUIRED IMPORTS (Simplified to only the core components) ---
+// --- REQUIRED IMPORTS ---
 const { Configuration, OpenAI } = require("openai");
-const fetch = require('node-fetch'); // Standard way to make external requests
+// NOTE: node-fetch is now used via the standard fetch() global in Node 18+ runtime
 const { DOMParser } = require('xmldom'); // For parsing XML
 
 // --- IMPORTANT: SECURE CONFIGURATION ---
@@ -17,12 +17,12 @@ const HEADERS = {
     "Content-Type": "application/json",
 };
 
-// --- STABLE TRANSCRIPT FETCH (Using node-fetch directly) ---
+// --- STABLE TRANSCRIPT FETCH (Using standard global fetch) ---
 async function getTranscriptFromYoutube(videoId) {
     const transcriptApiUrl = `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en`;
     
-    // Using node-fetch
-    const response = await fetch(transcriptApiUrl);
+    // 🛑 FIX: Use global fetch() which is the supported standard
+    const response = await fetch(transcriptApiUrl); 
     
     if (!response.ok) {
         throw new Error(`YouTube API returned status ${response.status}.`);
@@ -41,6 +41,7 @@ async function getTranscriptFromYoutube(videoId) {
         
         let transcript = '';
         for (let i = 0; i < textNodes.length; i++) {
+            // Note: We are using textContent, which is safer than innerHTML
             transcript += textNodes[i].textContent + ' ';
         }
         return transcript.trim();
@@ -51,9 +52,8 @@ async function getTranscriptFromYoutube(videoId) {
 
 
 exports.handler = async (event) => {
-    // 🛑 DEBUG: Log immediate success to verify function startup
-    console.log("FUNCTION STARTED SUCCESSFULLY"); 
-    
+    // console.log("FUNCTION STARTED SUCCESSFULLY"); // Removed debug log
+
     // Handle OPTIONS request
     if (event.httpMethod === "OPTIONS") {
         return { statusCode: 200, headers: HEADERS, body: JSON.stringify({ message: "CORS preflight successful" }) };
@@ -84,7 +84,6 @@ exports.handler = async (event) => {
 
         if (!videoId) throw new Error("Could not extract video ID from URL.");
     } catch (e) {
-        // This is the source of the 400 error return
         console.error("Error parsing request body or URL:", e.message);
         return {
             statusCode: 400, 
@@ -92,12 +91,8 @@ exports.handler = async (event) => {
             body: JSON.stringify({ error: `Invalid request or URL data: ${e.message}` }), 
         };
     }
-    
-    // 🛑 DEBUG: Log video ID extraction success
-    console.log("Video ID extracted:", videoId);
 
-    // ... (Transcript fetch and OpenAI call logic follows) ...
-    // Since the 502 occurs before this, we trust the logic below is stable
+    // console.log("Video ID extracted:", videoId); // Removed debug log
     
     let transcriptText = "";
     
