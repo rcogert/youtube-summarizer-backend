@@ -11,14 +11,14 @@ const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
 
 // Define all necessary CORS headers once
 const HEADERS = {
-    "Access-Control-Allow-Origin": "*", // Allow all origins (YouTube)
+    "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Headers": "Content-Type, Authorization", 
     "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Content-Type": "application/json",
+    "Content-Type": "application/json", // Crucial for client parsing
 };
 
 exports.handler = async (event) => {
-    // 1. Handle Preflight OPTIONS request (CORS check)
+    // Handle OPTIONS request
     if (event.httpMethod === "OPTIONS") {
         return { statusCode: 200, headers: HEADERS, body: JSON.stringify({ message: "CORS preflight successful" }) };
     }
@@ -27,7 +27,7 @@ exports.handler = async (event) => {
         return { statusCode: 405, headers: HEADERS, body: JSON.stringify({ error: "Method Not Allowed. Use POST." }) };
     }
     
-    // Check key availability (will rely on Netlify variable being set)
+    // Check key availability
     if (!OPENAI_API_KEY) {
          return {
             statusCode: 500,
@@ -57,8 +57,9 @@ exports.handler = async (event) => {
         console.error("Error parsing request body or URL:", e.message);
         return {
             statusCode: 400, 
-            headers: HEADERS, // 🛑 FIX: Ensure headers are on the 400 response
-            body: JSON.stringify({ error: `Invalid request or URL data: ${e.message}` }),
+            headers: HEADERS, 
+            // 🛑 FIX: Ensure this body is always a valid JSON string
+            body: JSON.stringify({ error: `Invalid request or URL data: ${e.message}` }), 
         };
     }
 
@@ -77,7 +78,7 @@ exports.handler = async (event) => {
         console.error("Transcript Error:", e.message);
         return {
             statusCode: 404, 
-            headers: HEADERS, // 🛑 FIX: Ensure headers are on the 404 response
+            headers: HEADERS, 
             body: JSON.stringify({ error: "Could not retrieve transcript.", details: e.message }),
         };
     }
@@ -85,6 +86,8 @@ exports.handler = async (event) => {
     // 4. Call OpenAI to Summarize
     try {
         const prompt = `Summarize the following YouTube video transcript concisely and clearly in two short paragraphs. Transcript: \n\n${transcriptText}`;
+
+        // ... (OpenAI call logic) ...
 
         const completion = await openai.chat.completions.create({
             model: "gpt-4o-mini",
@@ -100,7 +103,7 @@ exports.handler = async (event) => {
         // 5. Return Summary to Client
         return {
             statusCode: 200,
-            headers: HEADERS, // 🛑 FIX: Ensure headers are on the 200 response
+            headers: HEADERS,
             body: JSON.stringify({ summary: summary }),
         };
 
@@ -108,7 +111,7 @@ exports.handler = async (event) => {
         console.error("OpenAI Error:", e.message);
         return {
             statusCode: 500, 
-            headers: HEADERS, // 🛑 FIX: Ensure headers are on the 500 response
+            headers: HEADERS, 
             body: JSON.stringify({ error: "OpenAI summarization failed.", details: e.message }),
         };
     }
