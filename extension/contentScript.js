@@ -1,10 +1,10 @@
 // ==========================================================
 // YOUTUBE TLDR SUMMARIZER - CONTENT SCRIPT
-// V15: Final URL Structure Fix (Proxy Route)
+// V20: FINAL URL CHANGE TO BREAK NETLIFY CACHE
 // ==========================================================
 
-// *** CRITICAL CHANGE HERE: Using the clean proxy path ***
-const API_URL = "https://brilliant-moonbeam-e70394.netlify.app/api/summarize"; 
+// *** CRITICAL CHANGE HERE: Using the NEW proxy path /api/tldr ***
+const API_URL = "https://brilliant-moonbeam-e70394.netlify.app/api/tldr"; 
 const BUTTON_CLASS = "tldr-summarizer-button";
 const VIDEO_LINK_SELECTOR = 'a[href*="/watch?v="]'; 
 
@@ -21,7 +21,7 @@ function createButton(url) {
     button.style.cssText = `
         position: absolute;
         top: 5px;
-        right: 5px;
+        left: 5px; 
         background: #CC0000;
         color: white;
         border: none;
@@ -30,7 +30,7 @@ function createButton(url) {
         cursor: pointer;
         z-index: 1000;
         border-radius: 4px;
-        display: none;
+        visibility: hidden; 
         pointer-events: all;
     `;
     button.onclick = (e) => {
@@ -41,7 +41,8 @@ function createButton(url) {
     return button;
 }
 
-function injectButton(container, videoId, isMainPlayer = false) {
+// CRITICAL FIX: The function now takes the hover target separately
+function injectButton(container, videoId, isMainPlayer = false, hoverTarget = null) {
     if (container.querySelector(`.${BUTTON_CLASS}`)) {
         return;
     }
@@ -52,25 +53,26 @@ function injectButton(container, videoId, isMainPlayer = false) {
     container.style.position = 'relative'; 
     
     if (isMainPlayer) {
-        button.style.display = 'block'; 
-        button.style.top = '10px';
-        button.style.right = '10px';
+        button.style.visibility = 'visible'; 
+        button.style.top = '15px';
+        button.style.left = '15px'; 
+        button.style.padding = '8px 15px';
     }
 
     container.appendChild(button);
 
-    if (!isMainPlayer) {
-        container.addEventListener('mouseenter', () => { 
-            button.style.display = 'block'; 
+    if (!isMainPlayer && hoverTarget) {
+        hoverTarget.addEventListener('mouseenter', () => { 
+            button.style.visibility = 'visible'; 
         });
-        container.addEventListener('mouseleave', () => { 
-            button.style.display = 'none'; 
+        hoverTarget.addEventListener('mouseleave', () => { 
+            button.style.visibility = 'hidden'; 
         });
     }
 }
 
 // ------------------------------------------------------
-// 2. NETWORK COMMUNICATION (FINAL URL FIX)
+// 2. NETWORK COMMUNICATION (FINAL URL CHANGE)
 // ------------------------------------------------------
 function sendForSummary(url) {
   console.log("URL being sent to Netlify:", url); 
@@ -82,8 +84,11 @@ function sendForSummary(url) {
     .then((res) => {
         if (!res.ok) {
             console.error("API Fetch Failed with Status:", res.status, res.statusText);
-            // We now expect to see logs in Netlify if this fails!
-            throw new Error(`HTTP error! Status: ${res.status}`);
+            return res.json().then(data => {
+                throw new Error(`HTTP ${res.status}: ${data.error || 'Unknown Error'}`);
+            }).catch(e => {
+                 throw new Error(`HTTP ${res.status}: Could not read server response.`);
+            });
         }
         return res.json();
     })
@@ -100,7 +105,7 @@ function sendForSummary(url) {
     })
     .catch((err) => {
         console.error("Fetch/API Error:", err);
-        alert("Error: Failed to fetch summary. Check the console for network details.");
+        alert("Error: " + err.message); 
     });
 }
 
@@ -110,42 +115,46 @@ function sendForSummary(url) {
 // ------------------------------------------------------
 
 function processVideoElements() {
-    // A. Handle Main Video Player
-    const mainPlayer = document.querySelector('#movie_player');
-    const mainPlayerWrapper = mainPlayer ? mainPlayer.closest('ytd-watch-flexy') : null; 
-
-    if (mainPlayerWrapper && window.location.href.includes('/watch')) {
+    // A. Handle Main Video Player 
+    const mainPlayer = document.querySelector('#movie_player'); 
+    
+    if (mainPlayer && window.location.href.includes('/watch')) {
         const currentVideoId = new URLSearchParams(window.location.search).get('v');
-        if (currentVideoId && !mainPlayerWrapper.querySelector(`.${BUTTON_CLASS}`)) {
-            injectButton(mainPlayerWrapper, currentVideoId, true);
+        if (currentVideoId && !mainPlayer.querySelector(`.${BUTTON_CLASS}`)) {
+            injectButton(mainPlayer, currentVideoId, true); 
         }
     }
 
-    // B. Handle all Thumbnails 
+    // B. Handle all Thumbnails (Homepage, Search, Sidebar)
     const videoLinks = document.querySelectorAll(VIDEO_LINK_SELECTOR);
     
     videoLinks.forEach(link => {
-        const homePageContainer = link.closest('ytd-rich-grid-media') || link.closest('ytd-rich-item-renderer');
-        const sidebarContainer = link.closest('ytd-compact-video-renderer'); 
+        // Target the highest-level component wrapper for Home/Search
+        const homePageContainer = link.closest('ytd-rich-item-renderer');
+        
+        // Target the image wrapper for Watch Page Sidebar/Related Videos
+        const sidebarThumbContainer = link.closest('#thumbnail'); 
         
         let finalContainer = null;
         let videoId = null;
+        let hoverTarget = null;
         
-        if (sidebarContainer) {
-             const thumbWrapper = sidebarContainer.querySelector('#thumbnail');
-             if (thumbWrapper && !thumbWrapper.querySelector(`.${BUTTON_CLASS}`)) {
-                finalContainer = thumbWrapper;
-                videoId = new URLSearchParams(link.search).get('v');
-             }
+        // 1. Sidebar/Related Videos
+        if (sidebarThumbContainer) {
+            finalContainer = sidebarThumbContainer;
+            hoverTarget = link.closest('ytd-compact-video-renderer') || sidebarThumbContainer;
+            videoId = new URLSearchParams(link.search).get('v');
         }
         
-        if (homePageContainer) {
-            finalContainer = homePageContainer;
+        // 2. Homepage/Search Results
+        else if (homePageContainer) {
+            finalContainer = link.closest('ytd-thumbnail') || homePageContainer;
+            hoverTarget = homePageContainer; 
             videoId = new URLSearchParams(link.search).get('v');
         }
 
         if (finalContainer && videoId) {
-            injectButton(finalContainer, videoId, false);
+            injectButton(finalContainer, videoId, false, hoverTarget);
         }
     });
 }
