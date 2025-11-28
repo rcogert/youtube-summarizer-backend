@@ -7,7 +7,7 @@
     "default_title": "YouTube TLDR Summarizer"
   },
   "host_permissions": [
-    "https://brilliant-moonbeam-e70394.netlify.app/*",
+    "https://chimerical-semifreddo-7dfac2.netlify.app/*",
     "https://www.youtube.com/*"
   ],
   "content_scripts": [

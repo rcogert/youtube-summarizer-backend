@@ -1,157 +1,177 @@
-// ==========================================================
-// YOUTUBE TLDR SUMMARIZER - CONTENT SCRIPT
-// V21: Revert to Original URL Structure
-// ==========================================================
+// Robust content script: MutationObserver-based injection for YouTube thumbnails + player button.
+// Sends POST { videoId } to the Netlify endpoint.
+// Updated API_URL to the provided Netlify function.
 
-// *** CRITICAL CHANGE HERE: Using the ORIGINAL function path ***
-const API_URL = "https://brilliant-moonbeam-e70394.netlify.app/.netlify/functions/summarize"; 
+const API_URL = "https://chimerical-semifreddo-7dfac2.netlify.app/.netlify/functions/summarize";
 const BUTTON_CLASS = "tldr-summarizer-button";
-const VIDEO_LINK_SELECTOR = 'a[href*="/watch?v="]'; 
+const THUMBNAIL_SELECTORS = [
+  'ytd-rich-grid-media',
+  'ytd-rich-item-renderer',
+  'ytd-video-renderer',
+  'ytd-compact-video-renderer',
+  'ytd-thumbnail'
+];
 
-// --- UI AND DISPLAY (UNCHANGED) ---
+function createButton(videoId, isMainPlayer = false) {
+  const button = document.createElement('button');
+  button.className = BUTTON_CLASS;
+  button.textContent = 'TLDR';
+  button.style.cssText = `
+    position: absolute;
+    z-index: 10000;
+    padding: ${isMainPlayer ? '8px 15px' : '6px 10px'};
+    font-size: 12px;
+    border-radius: 4px;
+    background: rgba(204,0,0,0.95);
+    color: white;
+    border: none;
+    cursor: pointer;
+    right: 6px;
+    top: 6px;
+    visibility: ${isMainPlayer ? 'visible' : 'hidden'};
+  `;
+  button.addEventListener('click', (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    sendForSummary(videoId);
+  });
+  return button;
+}
+
+function ensurePositioned(el) {
+  try {
+    const cs = window.getComputedStyle(el);
+    if (cs.position === 'static') {
+      el.style.position = 'relative';
+    }
+  } catch (err) {
+    // ignore
+  }
+}
+
+async function sendForSummary(videoId) {
+  try {
+    const resp = await fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ videoId })
+    });
+    if (!resp.ok) {
+      let bodyText = '';
+      try { bodyText = await resp.text(); } catch (e) {}
+      console.error('Summary API error', resp.status, bodyText);
+      if (resp.status === 404) {
+        alert('Cannot access English captions for this video. Try a different video.');
+      } else {
+        alert(`Summary API error: ${resp.status}`);
+      }
+      return;
+    }
+    const data = await resp.json();
+    if (data.summary) {
+      showSummaryPopup(data.summary);
+      chrome.storage.local.set({ lastSummary: data.summary, lastVideoId: videoId });
+    } else if (data.error) {
+      alert('Summary Error: ' + data.error);
+    } else {
+      alert('No summary returned.');
+    }
+  } catch (err) {
+    console.error('Fetch/API Error:', err);
+    alert('Error: ' + (err.message || err));
+  }
+}
 
 function showSummaryPopup(summary) {
-    alert("Summary:\n\n" + summary);
+  alert('Summary:\n\n' + summary);
 }
 
-function createButton(url) {
-    const button = document.createElement('button');
-    button.className = BUTTON_CLASS;
-    button.textContent = 'TLDR';
-    button.style.cssText = `
-        position: absolute;
-        top: 5px;
-        left: 5px; 
-        background: #CC0000;
-        color: white;
-        border: none;
-        padding: 5px 10px;
-        font-size: 12px;
-        cursor: pointer;
-        z-index: 1000;
-        border-radius: 4px;
-        visibility: hidden; 
-        pointer-events: all;
-    `;
-    button.onclick = (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        sendForSummary(url); 
-    };
-    return button;
+function alreadyInjected(container) {
+  return !!container.querySelector(`.${BUTTON_CLASS}`);
 }
 
-function injectButton(container, videoId, isMainPlayer = false, hoverTarget = null) {
-    if (container.querySelector(`.${BUTTON_CLASS}`)) {
-        return;
-    }
+function injectIntoContainer(container, videoId, isMainPlayer = false, hoverTarget = null) {
+  if (!container || !videoId || alreadyInjected(container)) return;
+  ensurePositioned(container);
+  const btn = createButton(videoId, isMainPlayer);
+  const anchor = container.querySelector('a#thumbnail, a.yt-simple-endpoint') || container;
+  try {
+    anchor.appendChild(btn);
+  } catch (err) {
+    container.appendChild(btn);
+  }
+  container.dataset.tldrInjected = '1';
 
-    const url = `https://www.youtube.com/watch?v=${videoId}`;
-    const button = createButton(url);
-    
-    container.style.position = 'relative'; 
-    
-    if (isMainPlayer) {
-        button.style.visibility = 'visible'; 
-        button.style.top = '15px';
-        button.style.left = '15px'; 
-        button.style.padding = '8px 15px';
-    }
-
-    container.appendChild(button);
-
-    if (!isMainPlayer && hoverTarget) {
-        hoverTarget.addEventListener('mouseenter', () => { 
-            button.style.visibility = 'visible'; 
-        });
-        hoverTarget.addEventListener('mouseleave', () => { 
-            button.style.visibility = 'hidden'; 
-        });
-    }
+  if (!isMainPlayer && hoverTarget) {
+    hoverTarget.addEventListener('mouseenter', () => { btn.style.visibility = 'visible'; });
+    hoverTarget.addEventListener('mouseleave', () => { btn.style.visibility = 'hidden'; });
+  }
 }
 
-// ------------------------------------------------------
-// 2. NETWORK COMMUNICATION
-// ------------------------------------------------------
-function sendForSummary(url) {
-  console.log("URL being sent to Netlify:", url); 
+function extractVideoIdFromLink(link) {
+  try {
+    const url = new URL(link.href, location.origin);
+    return url.searchParams.get('v');
+  } catch (err) {
+    return null;
+  }
+}
 
-  fetch(API_URL, {
-    method: "POST",
-    body: JSON.stringify({ videoUrl: url }),
-  })
-    .then((res) => {
-        if (!res.ok) {
-            console.error("API Fetch Failed with Status:", res.status, res.statusText);
-            return res.json().then(data => {
-                throw new Error(`HTTP ${res.status}: ${data.error || 'Unknown Error'}`);
-            }).catch(e => {
-                 throw new Error(`HTTP ${res.status}: Could not read server response.`);
-            });
-        }
-        return res.json();
-    })
-    .then((data) => {
-      if (data.summary) {
-          showSummaryPopup(data.summary); 
+function scanAndInject(root = document) {
+  for (const sel of THUMBNAIL_SELECTORS) {
+    const nodes = Array.from(root.querySelectorAll(sel));
+    if (!nodes.length) continue;
+    for (const node of nodes) {
+      const link = node.querySelector('a[href*="/watch?v="]');
+      const videoId = link ? extractVideoIdFromLink(link) : null;
+      if (videoId) {
+        injectIntoContainer(node, videoId, false, node);
       }
-      else if (data.error) {
-          alert("Summary Error: " + data.error);
-      }
-      else {
-          alert("No summary returned.");
-      }
-    })
-    .catch((err) => {
-        console.error("Fetch/API Error:", err);
-        alert("Error: " + err.message); 
-    });
-}
-
-
-// ------------------------------------------------------
-// 3. INJECTION LOGIC (INTERVAL SCAN)
-// ------------------------------------------------------
-
-function processVideoElements() {
-    // A. Handle Main Video Player 
-    const mainPlayer = document.querySelector('#movie_player'); 
-    
-    if (mainPlayer && window.location.href.includes('/watch')) {
-        const currentVideoId = new URLSearchParams(window.location.search).get('v');
-        if (currentVideoId && !mainPlayer.querySelector(`.${BUTTON_CLASS}`)) {
-            injectButton(mainPlayer, currentVideoId, true); 
-        }
     }
+  }
 
-    // B. Handle all Thumbnails (Homepage, Search, Sidebar)
-    const videoLinks = document.querySelectorAll(VIDEO_LINK_SELECTOR);
-    
-    videoLinks.forEach(link => {
-        const homePageContainer = link.closest('ytd-rich-item-renderer');
-        const sidebarThumbContainer = link.closest('#thumbnail'); 
-        
-        let finalContainer = null;
-        let videoId = null;
-        let hoverTarget = null;
-        
-        if (sidebarThumbContainer) {
-            finalContainer = sidebarThumbContainer;
-            hoverTarget = link.closest('ytd-compact-video-renderer') || sidebarThumbContainer;
-            videoId = new URLSearchParams(link.search).get('v');
-        }
-        
-        else if (homePageContainer) {
-            finalContainer = link.closest('ytd-thumbnail') || homePageContainer;
-            hoverTarget = homePageContainer; 
-            videoId = new URLSearchParams(link.search).get('v');
-        }
-
-        if (finalContainer && videoId) {
-            injectButton(finalContainer, videoId, false, hoverTarget);
-        }
-    });
+  const mainPlayer = document.querySelector('#movie_player, ytd-player');
+  if (mainPlayer && location.pathname.includes('/watch')) {
+    const currentVideoId = new URLSearchParams(location.search).get('v');
+    if (currentVideoId && !mainPlayer.querySelector(`.${BUTTON_CLASS}`)) {
+      injectIntoContainer(mainPlayer, currentVideoId, true);
+    }
+  }
 }
 
-// Start the reliable scan loop every 500 milliseconds (0.5 seconds)
-setInterval(processVideoElements, 500);
+const observer = new MutationObserver((mutations) => {
+  for (const m of mutations) {
+    if (m.addedNodes && m.addedNodes.length) {
+      for (const n of m.addedNodes) {
+        if (n.nodeType !== 1) continue;
+        for (const sel of THUMBNAIL_SELECTORS) {
+          if ((n.matches && n.matches(sel)) || (n.querySelector && n.querySelector(sel))) {
+            scanAndInject(n);
+            break;
+          }
+        }
+      }
+    }
+  }
+});
+
+function start() {
+  const containers = [
+    document.querySelector('ytd-rich-grid-renderer'),
+    document.querySelector('ytd-section-list-renderer'),
+    document.body
+  ].filter(Boolean);
+
+  for (const c of containers) {
+    try {
+      observer.observe(c, { childList: true, subtree: true });
+    } catch (err) {
+      console.warn('Observer failed on container', c, err);
+    }
+  }
+  scanAndInject(document);
+  window.addEventListener('yt-navigate-finish', () => setTimeout(() => { scanAndInject(document); }, 700));
+  window.addEventListener('popstate', () => setTimeout(() => { scanAndInject(document); }, 700));
+}
+
+try { start(); } catch (err) { console.error('contentScript init error', err); }
