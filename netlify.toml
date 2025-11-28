@@ -4,7 +4,7 @@ publish = "."
 
 [functions]
 directory = "netlify/functions"
-node_bundler = "zisi" # CRITICAL FIX: Switched from esbuild to zisi
+node_bundler = "esbuild"
 external_node_modules = ["openai", "youtube-transcript-api"]
 
 [functions.summarize]
