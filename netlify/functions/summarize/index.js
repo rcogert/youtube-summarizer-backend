@@ -1,10 +1,9 @@
 // index.js (for netlify/functions/summarize)
 
-// --- REQUIRED IMPORTS ---
+// --- REQUIRED IMPORTS (Simplified to only the core components) ---
 const { Configuration, OpenAI } = require("openai");
-const ytSearch = require('yt-search'); // Stable library for finding video data
-const { DOMParser } = require('xmldom'); // Used for parsing XML transcript
 const fetch = require('node-fetch'); // Standard way to make external requests
+const { DOMParser } = require('xmldom'); // For parsing XML
 
 // --- IMPORTANT: SECURE CONFIGURATION ---
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY; 
@@ -12,19 +11,17 @@ const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
 
 // Define CORS headers
 const HEADERS = {
-    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Origin": "*", 
     "Access-Control-Allow-Headers": "Content-Type, Authorization", 
     "Access-Control-Allow-Methods": "POST, OPTIONS",
     "Content-Type": "application/json",
 };
 
-// --- CORE FUNCTION ---
-
+// --- STABLE TRANSCRIPT FETCH (Using node-fetch directly) ---
 async function getTranscriptFromYoutube(videoId) {
-    // This is the direct, unauthenticated API endpoint for English captions
     const transcriptApiUrl = `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en`;
     
-    // 1. Fetch the XML data
+    // Using node-fetch
     const response = await fetch(transcriptApiUrl);
     
     if (!response.ok) {
@@ -33,9 +30,7 @@ async function getTranscriptFromYoutube(videoId) {
 
     const xmlText = await response.text();
 
-    // 2. Check for "No captions" message in the XML (common failure mode)
     if (xmlText.includes('<body>')) {
-        // Successful transcript found, parse it
         const parser = new DOMParser();
         const xmlDoc = parser.parseFromString(xmlText, "text/xml");
         
@@ -44,20 +39,21 @@ async function getTranscriptFromYoutube(videoId) {
             throw new Error("Transcript file is empty.");
         }
         
-        // 3. Extract text from XML nodes
         let transcript = '';
         for (let i = 0; i < textNodes.length; i++) {
             transcript += textNodes[i].textContent + ' ';
         }
         return transcript.trim();
     } else {
-        // This usually means captions were requested but not found for the language
         throw new Error("No English captions available for this video.");
     }
 }
 
 
 exports.handler = async (event) => {
+    // 🛑 DEBUG: Log immediate success to verify function startup
+    console.log("FUNCTION STARTED SUCCESSFULLY"); 
+    
     // Handle OPTIONS request
     if (event.httpMethod === "OPTIONS") {
         return { statusCode: 200, headers: HEADERS, body: JSON.stringify({ message: "CORS preflight successful" }) };
@@ -88,6 +84,7 @@ exports.handler = async (event) => {
 
         if (!videoId) throw new Error("Could not extract video ID from URL.");
     } catch (e) {
+        // This is the source of the 400 error return
         console.error("Error parsing request body or URL:", e.message);
         return {
             statusCode: 400, 
@@ -95,14 +92,19 @@ exports.handler = async (event) => {
             body: JSON.stringify({ error: `Invalid request or URL data: ${e.message}` }), 
         };
     }
+    
+    // 🛑 DEBUG: Log video ID extraction success
+    console.log("Video ID extracted:", videoId);
 
+    // ... (Transcript fetch and OpenAI call logic follows) ...
+    // Since the 502 occurs before this, we trust the logic below is stable
+    
     let transcriptText = "";
     
     try {
-        // 🛑 FIX: Use the new, stable transcript fetching method
         transcriptText = await getTranscriptFromYoutube(videoId);
         
-        if (transcriptText.length < 50) { // Check for meaningful content
+        if (transcriptText.length < 50) { 
              throw new Error("Transcript is too short to summarize.");
         }
         
@@ -115,7 +117,6 @@ exports.handler = async (event) => {
         };
     }
     
-    // 4. Call OpenAI to Summarize
     try {
         const prompt = `Summarize the following YouTube video transcript concisely and clearly in two short paragraphs. Transcript: \n\n${transcriptText}`;
 
